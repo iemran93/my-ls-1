@@ -1,0 +1,18 @@
+-R, --recursive
+list subdirectories recursively
+(List files and directories recursively, including subdirectories.)
+
+-l
+use a long listing format
+(detailed information about files and directories)
+
+-a, --all
+do not ignore entries starting with . 
+(hidden files and directories)
+
+-r, --reverse
+reverse order while sorting (non-alphabetically)
+
+-t
+sort by time, newest first; see --time
+(displaying the most recently modified ones first)
