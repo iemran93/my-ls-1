@@ -5,7 +5,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"math"
 	"os"
 	"os/user"
@@ -49,7 +48,7 @@ func main() {
 			fmt.Println("Error:", err)
 			continue
 		}
-		printFiles(files, flags)
+		printFiles(path, files, flags)
 	}
 }
 
@@ -76,13 +75,28 @@ func parseArgs(args []string) (map[rune]bool, []string) {
 
 func listDir(dir string, flags map[rune]bool) ([]FileInfo, error) {
 	var files []FileInfo
+	skipfirst := true
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+
 		if err != nil {
 			return err
 		}
 
+		if skipfirst {
+			skipfirst = false
+			return nil
+		}
+
 		// a flag not set
-		if !flags['a'] && strings.HasPrefix(path, ".") {
+		/* if !flags['a'] && strings.HasPrefix(path, ".") {
+			return nil
+		} */
+		// log.Println(info.Name(), filepath.Base(dir))
+		// log.Println(filepath.Dir(path), filepath.Base(dir), info.Name())
+		if !flags['a'] && strings.HasPrefix(info.Name(), ".") && path != "." {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 
@@ -90,7 +104,10 @@ func listDir(dir string, flags map[rune]bool) ([]FileInfo, error) {
 		/* 		if info.IsDir() && path != "." && !flags['R'] {
 			return filepath.SkipDir
 		} */
-		if !flags['R'] && strings.Contains(path, "/") {
+		/* if !flags['R'] && strings.Contains(path, "/") {
+			return filepath.SkipDir
+		} */
+		if !flags['R'] && filepath.Base(filepath.Dir(path)) != filepath.Base(dir) {
 			return filepath.SkipDir
 		}
 
@@ -116,11 +133,10 @@ func listDir(dir string, flags map[rune]bool) ([]FileInfo, error) {
 	return files, nil
 }
 
-func printFiles(files []FileInfo, flags map[rune]bool) {
+func printFiles(dir string, files []FileInfo, flags map[rune]bool) {
 	if flags['R'] {
 		// using dircsKeys to maintaine the dircs map order
-		dircs, dircsKeys := prepareRecursive(files) // map[string][]FileInfo
-		log.Println(dircs)
+		dircs, dircsKeys := prepareRecursive(dir, files) // map[string][]FileInfo
 		for _, dircKey := range dircsKeys {
 			k := dircKey
 			v := dircs[dircKey]
@@ -138,9 +154,19 @@ func printFiles(files []FileInfo, flags map[rune]bool) {
 					printLongFormat(file)
 				} else {
 					if indx != len(v)-1 {
-						fmt.Print(file.Name(), " ")
+						if file.IsDir() {
+							cFolder := colorFolder(file)
+							fmt.Print(cFolder, " ")
+						} else {
+							fmt.Print(file.Name(), " ")
+						}
 					} else {
-						fmt.Printf("%s\n", file.Name())
+						if file.IsDir() {
+							cFolder := colorFolder(file)
+							fmt.Printf("%s\n", cFolder)
+						} else {
+							fmt.Printf("%s\n", file.Name())
+						}
 					}
 				}
 			}
@@ -155,45 +181,98 @@ func printFiles(files []FileInfo, flags map[rune]bool) {
 				printLongFormat(file)
 			} else {
 				if indx != len(files)-1 {
-					fmt.Print(file.Path, "   ")
+					if file.IsDir() {
+						cFolder := colorFolder(file)
+						fmt.Print(cFolder, " ")
+					} else {
+						fmt.Print(file.Name(), " ")
+					}
 				} else {
-					fmt.Println(file.Path)
+					if file.IsDir() {
+						cFolder := colorFolder(file)
+						fmt.Printf("%s\n", cFolder)
+					} else {
+						fmt.Printf("%s\n", file.Name())
+					}
 				}
 			}
 		}
 	}
 }
 
-func prepareRecursive(files []FileInfo) (map[string][]FileInfo, []string) {
+func prepareRecursive(dir string, files []FileInfo) (map[string][]FileInfo, []string) {
 	dircs := map[string][]FileInfo{}
 	var dircsKeys []string
+	// dirBase := filepath.Dir(dir)
 	for _, file := range files {
-		if strings.Contains(file.Path, "/") || file.FileInfo.IsDir() {
-			lastSlashIndx := strings.LastIndex(file.Path, "/")
-			if lastSlashIndx != -1 {
-				dir := file.Path[:lastSlashIndx]
-				if _, ok := dircs[dir]; ok && dircs[dir][0].Path == "" {
-					dircs[dir] = []FileInfo{}
-				}
-				if _, exists := dircs[dir]; !exists {
-					dircsKeys = append(dircsKeys, dir)
-				}
-				dircs[dir] = append(dircs[dir], file)
-			} else {
-				dirName := file.FileInfo.Name()
-				if _, exists := dircs[dirName]; !exists {
-					dircsKeys = append(dircsKeys, dirName)
-				}
-				dircs[dirName] = append(dircs[dirName], FileInfo{})
-				dircs["."] = append(dircs["."], file)
+		fileBase := filepath.Dir(file.Path)
+		if fileBase != dir {
+			fileBase = fmt.Sprintf(filepath.Dir(dir) + "/" + fileBase)
+		}
+		if _, exist := dircs[fileBase]; !exist {
+			dircsKeys = append(dircsKeys, fileBase)
+		}
+		dircs[fileBase] = append(dircs[fileBase], file)
+		if file.FileInfo.IsDir() {
+			contents, _ := os.ReadDir(file.Path)
+			if len(contents) == 0 {
+				path := fmt.Sprint(filepath.Dir(dir) + "/" + file.Path)
+				dircs[path] = append(dircs[path], FileInfo{})
+				dircsKeys = append(dircsKeys, path)
 			}
-		} else {
-			if _, exists := dircs["."]; !exists {
-				dircsKeys = append(dircsKeys, ".")
-			}
-			dircs["."] = append(dircs["."], file)
 		}
 	}
+	// 	log.Println(file)
+	// 	fileBase := filepath.Dir(file.Path)
+
+	// 	if fileBase != dirBase {
+	// 		// if _, exists := dircs[fileBase]; !exists {
+	// 		// 	dircsKeys = append(dircsKeys, fileBase)
+	// 		// }
+
+	// 		if file.IsDir() {
+	// 			if _, exist := dircs[fileBase]; !exist {
+	// 				dircs[fileBase] = append(dircs[fileBase], FileInfo{})
+	// 				dircsKeys = append(dircsKeys, fileBase)
+	// 			} else {
+	// 				dircs[fileBase] = append(dircs[fileBase], file)
+	// 			}
+	// 		} else {
+	// 			dircs[fileBase] = append(dircs[fileBase], file)
+	// 		}
+	// 	} else {
+	// 		// if _, exists := dircs[dirBase]; !exists {
+	// 		// 	dircsKeys = append(dircsKeys, dirBase)
+	// 		// }
+
+	// 		if file.FileInfo.IsDir() {
+	// 			if _, exist := dircs[dirBase]; !exist {
+	// 				dircs[dirBase] = append(dircs[dirBase], FileInfo{})
+	// 				dircsKeys = append(dircsKeys, dirBase)
+	// 			} else {
+	// 				dircs[dirBase] = append(dircs[dirBase], file)
+	// 			}
+
+	// 		} else {
+	// 			dircs[dirBase] = append(dircs[dirBase], file)
+	// 		}
+	// 	}
+	// }
+	// log.Println(dircs, dircsKeys)
+	// // handle empty folder
+
+	// // remove nil from non-empty folders
+	// for k, v := range dircs {
+	// 	if len(v) > 1 {
+	// 		newSlice := []FileInfo{}
+	// 		for _, file := range v {
+	// 			if file.Path != "" {
+	// 				newSlice = append(newSlice, file)
+	// 			}
+	// 		}
+	// 		dircs[k] = newSlice
+	// 	}
+	// }
 	return dircs, dircsKeys
 }
 
@@ -202,9 +281,7 @@ func printLongFormat(file FileInfo) {
 	modTime := file.ModTime().Format(time.Stamp)
 	modTime = modTime[:len(modTime)-3]
 
-	colorReset := "\033[0m"
-	colorBlueText := "\033[34m"
-	colorLightGreenBackground := "\033[102m"
+	cFolder := colorFolder(file)
 
 	uName, gName := getUserGroup(file)
 	nOfLinks := getLinksNumber(file)
@@ -217,8 +294,7 @@ func printLongFormat(file FileInfo) {
 		file.Size(),
 		modTime)
 	if file.IsDir() {
-		fmt.Printf("%s%s%s%s\n",
-			colorBlueText, colorLightGreenBackground, file.Name(), colorReset)
+		fmt.Printf("%s\n", cFolder)
 	} else {
 		fmt.Printf("%s\n",
 			file.Name())
@@ -271,4 +347,15 @@ func getLinksNumber(file FileInfo) uint64 {
 	} else {
 		return nOfLinks
 	}
+}
+
+func colorFolder(file FileInfo) string {
+	colorReset := "\033[0m"
+	colorBlueText := "\033[34m"
+	colorLightGreenBackground := "\033[102m"
+
+	coloredFolder := fmt.Sprintf("%s%s%s%s", colorBlueText,
+		colorLightGreenBackground, file.Name(), colorReset)
+
+	return coloredFolder
 }
