@@ -41,6 +41,8 @@ func main() {
 
 	flags, paths := parseArgs(args)
 
+	// order paths to start with .
+
 	for _, path := range paths {
 		// get the current working directory if it starts with .
 		if path[0] == '.' {
@@ -50,14 +52,14 @@ func main() {
 			}
 			nDir := strings.TrimLeft(path, ".")
 			if nDir != "" {
-				path = fullPath + "/" + nDir
+				path = fullPath + nDir
 			} else {
 				path = fullPath
 			}
 		}
 
 		if flags['R'] {
-			// Use recursive printing if -R flag is set
+			// use recursive printing if -R flag is set
 			printRecursive(path, flags)
 		} else {
 			files, err := listDir(path, flags)
@@ -65,6 +67,9 @@ func main() {
 				fmt.Println("Error:", err)
 				continue
 			}
+
+			// handle multiple paths printing format
+
 			printFiles(path, files, flags)
 			fmt.Print("\n")
 		}
@@ -202,12 +207,16 @@ func printRecursive(dir string, flags map[rune]bool) {
 		return
 	}
 
+	// replace the parent directory with . if used in the same dir
+	fullPath, _ := os.Getwd()
+	newDir := strings.Replace(dir, fullPath, ".", -1)
+	fmt.Printf("\n%s:\n", newDir)
+
 	printFiles(dir, files, flags)
 	fmt.Print("\n")
 
 	for _, file := range files {
 		if file.IsDir() && file.Name != "." && file.Name != ".." {
-			fmt.Printf("\n%s:\n", file.Path)
 			printRecursive(file.Path, flags)
 		}
 	}

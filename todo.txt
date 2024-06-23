@@ -1,0 +1,3 @@
+- printing format for multiple files
+- prioritize . when multiple paths exist
+- replace the path with . (add to check if fullpath == dir)
