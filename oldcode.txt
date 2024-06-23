@@ -42,7 +42,7 @@ func main() {
 	flags, paths := parseArgs(args)
 
 	for _, path := range paths {
-		// get the current working directory if it starts with .
+		// get the current working directory if its start with .
 		if path[0] == '.' {
 			fullPath, err := os.Getwd()
 			if err != nil {
@@ -56,18 +56,13 @@ func main() {
 			}
 		}
 
-		if flags['R'] {
-			// Use recursive printing if -R flag is set
-			printRecursive(path, flags)
-		} else {
-			files, err := listDir(path, flags)
-			if err != nil {
-				fmt.Println("Error:", err)
-				continue
-			}
-			printFiles(path, files, flags)
-			fmt.Print("\n")
+		files, err := listDir(path, flags)
+		if err != nil {
+			fmt.Println("Error:", err)
+			continue
 		}
+		printFiles(path, files, flags)
+		fmt.Print("\n")
 	}
 }
 
@@ -84,7 +79,8 @@ func parseArgs(args []string) (map[rune]bool, []string) {
 			} else if arg == "--all" {
 				flags[rune('a')] = true
 			} else {
-				log.Fatalf("option '%s' is ambiguous; possibilities: '--all' '--reverse' '--recursive'", arg)
+				log.Fatalf("option '%s' is ambiguous; possibilities: '--all' '--reverse' '--recursive'",
+					arg)
 			}
 		} else if strings.HasPrefix(arg, "-") {
 			for _, flag := range arg[1:] {
@@ -123,12 +119,16 @@ func listDir(dir string, flags map[rune]bool) ([]FileInfo, error) {
 		}
 		files = append(files, FileInfo{FileInfo: parentStat, Path: parentDir, Name: ".."})
 	}
+
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		// skip the root directory
+		// skip the root direcotry
+		/* if path == dir && !flags['a'] {
+			return nil
+		} */
 		if skipfirst {
 			skipfirst = false
 			return nil
@@ -142,7 +142,8 @@ func listDir(dir string, flags map[rune]bool) ([]FileInfo, error) {
 			return nil
 		}
 
-		if filepath.Base(filepath.Dir(path)) != filepath.Base(dir) {
+		// R flag not set
+		if !flags['R'] && filepath.Base(filepath.Dir(path)) != filepath.Base(dir) {
 			return filepath.SkipDir
 		}
 
@@ -169,51 +170,100 @@ func listDir(dir string, flags map[rune]bool) ([]FileInfo, error) {
 }
 
 func printFiles(dir string, files []FileInfo, flags map[rune]bool) {
-	if flags['l'] {
-		printDirSize(files)
-	}
-	for indx, file := range files {
-		if flags['l'] {
-			printLongFormat(file)
-		} else {
-			if indx != len(files)-1 {
-				if file.IsDir() {
-					cFolder := colorFolder(file)
-					fmt.Print(cFolder, " ")
-				} else {
-					fmt.Print(file.Name, " ")
+	if flags['R'] {
+		// using dircsKeys to maintaine the dircs map order
+		dircs, dircsKeys := prepareRecursive(dir, files) // map[string][]FileInfo
+		for _, dircKey := range dircsKeys {
+			k := dircKey
+			v := dircs[dircKey]
+			fmt.Printf("%s:\n", k)
+			// print size
+			if flags['l'] {
+				printDirSize(v)
+			}
+			for indx, file := range v {
+				if file.Path == "" { // skip nil(empty directory)
+					fmt.Print("")
+					continue
 				}
-			} else {
-				if file.IsDir() {
-					cFolder := colorFolder(file)
-					fmt.Printf("%s\n", cFolder)
+				if flags['l'] {
+					printLongFormat(file)
 				} else {
-					fmt.Printf("%s\n", file.Name)
+					if indx != len(v)-1 {
+						if file.IsDir() {
+							cFolder := colorFolder(file)
+							fmt.Print(cFolder, " ")
+						} else {
+							fmt.Print(file.Name, " ")
+						}
+					} else {
+						if file.IsDir() {
+							cFolder := colorFolder(file)
+							fmt.Printf("%s\n", cFolder)
+						} else {
+							fmt.Printf("%s\n", file.Name)
+						}
+					}
+				}
+			}
+			fmt.Println()
+		}
+	} else {
+		if flags['l'] {
+			printDirSize(files)
+		}
+		for indx, file := range files {
+			if flags['l'] {
+				printLongFormat(file)
+			} else {
+				if indx != len(files)-1 {
+					if file.IsDir() {
+						cFolder := colorFolder(file)
+						fmt.Print(cFolder, " ")
+					} else {
+						fmt.Print(file.Name, " ")
+					}
+				} else {
+					if file.IsDir() {
+						cFolder := colorFolder(file)
+						fmt.Printf("%s\n", cFolder)
+					} else {
+						fmt.Printf("%s\n", file.Name)
+					}
 				}
 			}
 		}
 	}
 }
 
-func printRecursive(dir string, flags map[rune]bool) {
-	files, err := listDir(dir, flags)
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-
-	printFiles(dir, files, flags)
-	fmt.Print("\n")
-
+func prepareRecursive(dir string, files []FileInfo) (map[string][]FileInfo, []string) {
+	dircs := map[string][]FileInfo{}
+	var dircsKeys []string
+	// dirBase := filepath.Dir(dir)
 	for _, file := range files {
-		if file.IsDir() && file.Name != "." && file.Name != ".." {
-			fmt.Printf("\n%s:\n", file.Path)
-			printRecursive(file.Path, flags)
+		fileBase := filepath.Dir(file.Path)
+		if fileBase != dir {
+			fileBase = fmt.Sprintf(filepath.Dir(dir) + "/" + fileBase)
+		}
+		if _, exist := dircs[fileBase]; !exist {
+			dircsKeys = append(dircsKeys, fileBase)
+		}
+		dircs[fileBase] = append(dircs[fileBase], file)
+		if file.FileInfo.IsDir() {
+			contents, _ := os.ReadDir(file.Path)
+			if len(contents) == 0 {
+				path := fmt.Sprint(filepath.Dir(dir) + "/" + file.Path)
+				dircs[path] = append(dircs[path], FileInfo{})
+				dircsKeys = append(dircsKeys, path)
+			}
 		}
 	}
+
+	return dircs, dircsKeys
 }
 
 func printLongFormat(file FileInfo) {
+
 	modTime := file.ModTime().Format(time.Stamp)
 	modTime = modTime[:len(modTime)-3]
 
@@ -232,7 +282,8 @@ func printLongFormat(file FileInfo) {
 	if file.IsDir() {
 		fmt.Printf("%s\n", cFolder)
 	} else {
-		fmt.Printf("%s\n", file.Name)
+		fmt.Printf("%s\n",
+			file.Name)
 	}
 }
 
