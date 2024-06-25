@@ -19,6 +19,12 @@ type FileInfo struct {
 	Name string
 }
 
+type Path struct {
+	Path  string
+	Name  string
+	Ptype string
+}
+
 type ByModTime []FileInfo
 
 func (a ByModTime) Len() int {
@@ -39,28 +45,29 @@ func main() {
 		args = append(args, ".")
 	}
 
-	flags, paths := parseArgs(args)
-
+	flags, inpPaths := parseArgs(args)
+	log.Println(flags, inpPaths)
 	// order paths to start with .
 
-	for _, path := range paths {
-		// get the current working directory if it starts with .
-		if path[0] == '.' {
-			fullPath, err := os.Getwd()
-			if err != nil {
-				log.Println(err)
-			}
-			nDir := strings.TrimLeft(path, ".")
-			if nDir != "" {
-				path = fullPath + nDir
-			} else {
-				path = fullPath
-			}
+	for _, inpPath := range inpPaths {
+		// get the path (Path struct)
+		path, err := getPath(inpPath)
+		if err != nil {
+			log.Fatal(err)
 		}
 
-		if flags['R'] {
+		if flags['R'] && path.Ptype == "Dir" {
 			// use recursive printing if -R flag is set
 			printRecursive(path, flags)
+		} else if path.Ptype == "File" {
+			// print the file if it is a file
+			fileinfo, _ := os.Stat(path.Path)
+			files := []FileInfo{{FileInfo: fileinfo, Path: path.Path, Name: path.Name}}
+			if len(inpPaths) > 1 {
+				fmt.Printf("%s: \n", path.Name)
+			}
+			printFiles(path, files, flags)
+			fmt.Print("\n")
 		} else {
 			files, err := listDir(path, flags)
 			if err != nil {
@@ -69,7 +76,9 @@ func main() {
 			}
 
 			// handle multiple paths printing format
-
+			if len(inpPaths) > 1 {
+				fmt.Printf("%s: \n", path.Name)
+			}
 			printFiles(path, files, flags)
 			fmt.Print("\n")
 		}
@@ -77,11 +86,19 @@ func main() {
 }
 
 func parseArgs(args []string) (map[rune]bool, []string) {
-	flags := make(map[rune]bool)
+	flags := map[rune]bool{}
 	var paths []string
+	flagsList := []rune{'a', 'l', 'r', 'R', 't'}
 
 	for _, arg := range args {
+		if arg == "-" {
+			paths = append(paths, arg)
+			continue
+		}
 		if len(arg) >= 2 && arg[:2] == "--" {
+			if arg == "--" {
+				continue
+			}
 			if arg == "--reverse" {
 				flags[rune('r')] = true
 			} else if arg == "--recursive" {
@@ -93,6 +110,9 @@ func parseArgs(args []string) (map[rune]bool, []string) {
 			}
 		} else if strings.HasPrefix(arg, "-") {
 			for _, flag := range arg[1:] {
+				if !strings.ContainsRune(string(flagsList), flag) {
+					log.Fatalf("ls: invalid option -- '%c'", flag)
+				}
 				flags[rune(flag)] = true
 			}
 		} else {
@@ -107,20 +127,66 @@ func parseArgs(args []string) (map[rune]bool, []string) {
 	return flags, paths
 }
 
-func listDir(dir string, flags map[rune]bool) ([]FileInfo, error) {
+func getPath(inpPath string) (Path, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return Path{}, err
+	}
+
+	wdParent := filepath.Dir(wd)
+	inpPath = strings.Replace(inpPath, wdParent, "..", -1)
+	inpPath = strings.Replace(inpPath, wd, ".", -1)
+
+	path := ""
+	name := ""
+	if len(inpPath) >= 2 && inpPath[:2] == ".." {
+		after := strings.TrimLeft(inpPath, "..")
+		path = filepath.Dir(wd) + after
+		name = ".." + after
+	} else if inpPath[0] == '.' {
+		after := strings.TrimLeft(inpPath, ".")
+		path = wd + after
+		name = "." + after
+	} else {
+		path = inpPath
+		name = inpPath
+	}
+
+	fileinfo, err := os.Stat(path)
+	if err != nil {
+		return Path{}, err
+	}
+
+	pType := ""
+	if fileinfo.IsDir() {
+		pType = "Dir"
+	} else {
+		pType = "File"
+	}
+
+	nPath := Path{
+		Path:  path,
+		Name:  name,
+		Ptype: pType,
+	}
+
+	return nPath, nil
+}
+
+func listDir(dir Path, flags map[rune]bool) ([]FileInfo, error) {
 	var files []FileInfo
 	skipfirst := true
 
 	// add "." and ".." explicitly if -a flag is set
 	if flags['a'] {
-		currentDir := dir
-		parentDir := filepath.Dir(dir)
+		currentDir := dir.Path
+		parentDir := filepath.Dir(dir.Path)
 
 		currentStat, err := os.Stat(currentDir)
 		if err != nil {
 			return nil, err
 		}
-		files = append(files, FileInfo{FileInfo: currentStat, Path: dir, Name: "."})
+		files = append(files, FileInfo{FileInfo: currentStat, Path: dir.Path, Name: "."})
 
 		parentStat, err := os.Stat(parentDir)
 		if err != nil {
@@ -128,7 +194,8 @@ func listDir(dir string, flags map[rune]bool) ([]FileInfo, error) {
 		}
 		files = append(files, FileInfo{FileInfo: parentStat, Path: parentDir, Name: ".."})
 	}
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+
+	err := filepath.Walk(dir.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -147,7 +214,7 @@ func listDir(dir string, flags map[rune]bool) ([]FileInfo, error) {
 			return nil
 		}
 
-		if filepath.Base(filepath.Dir(path)) != filepath.Base(dir) {
+		if filepath.Base(filepath.Dir(path)) != filepath.Base(dir.Path) {
 			return filepath.SkipDir
 		}
 
@@ -173,7 +240,7 @@ func listDir(dir string, flags map[rune]bool) ([]FileInfo, error) {
 	return files, nil
 }
 
-func printFiles(dir string, files []FileInfo, flags map[rune]bool) {
+func printFiles(dir Path, files []FileInfo, flags map[rune]bool) {
 	if flags['l'] {
 		printDirSize(files)
 	}
@@ -200,24 +267,25 @@ func printFiles(dir string, files []FileInfo, flags map[rune]bool) {
 	}
 }
 
-func printRecursive(dir string, flags map[rune]bool) {
+func printRecursive(dir Path, flags map[rune]bool) {
 	files, err := listDir(dir, flags)
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
 
-	// replace the parent directory with . if used in the same dir
-	fullPath, _ := os.Getwd()
-	newDir := strings.Replace(dir, fullPath, ".", -1)
-	fmt.Printf("\n%s:\n", newDir)
+	fmt.Printf("\n%s:\n", dir.Name)
 
 	printFiles(dir, files, flags)
 	fmt.Print("\n")
 
 	for _, file := range files {
 		if file.IsDir() && file.Name != "." && file.Name != ".." {
-			printRecursive(file.Path, flags)
+			nDir, err := getPath(dir.Name + "/" + file.Name)
+			if err != nil {
+				log.Fatal(err)
+			}
+			printRecursive(nDir, flags)
 		}
 	}
 }
@@ -247,16 +315,15 @@ func printLongFormat(file FileInfo) {
 
 func printDirSize(files []FileInfo) {
 	var dirSize int
-	if files[0].Path != "" {
-		for _, file := range files {
-			if file.Size() < 1024 {
-				dirSize += 1
-			} else {
-				dirSize += int(math.Ceil(float64(file.Size()) / 1024))
-			}
+
+	for _, file := range files {
+		if file.Size() < 1024 && file.Size() != 0 {
+			dirSize += 1
+		} else {
+			dirSize += int(math.Ceil(float64(file.Size()) / 1024))
 		}
 	}
-	// convert byte to MB
+
 	fmt.Printf("total %d\n", dirSize)
 }
 
