@@ -1,5 +1,5 @@
 - order the paths (how ls order them ???)
 done - Create directory with - name and run both my-ls and the system command ls with the arguments: "-"
 done - Run both my-ls and the system command ls with the arguments: "-l <directory name> -a <file name>"
-- Run both my-ls and the system command ls with the flag: "-a". (sort them)
+done - Run both my-ls and the system command ls with the flag: "-a". (sort them)
 done - Run both my-ls and the system command ls with the arguments: "<file name>".
