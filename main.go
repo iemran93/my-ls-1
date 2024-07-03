@@ -13,9 +13,10 @@ type FileInfo struct {
 }
 
 type Path struct {
-	Path  string
-	Name  string
-	Ptype string
+	Path    string
+	Name    string
+	Ptype   string
+	LinkSrc string
 }
 
 type ByModTime []FileInfo
