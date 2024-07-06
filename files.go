@@ -74,7 +74,6 @@ func listDir(dir Path, flags map[rune]bool) ([]FileInfo, error) {
 		}
 		files = append(files, FileInfo{FileInfo: parentStat, Path: parentDir, Name: ".."})
 	}
-
 	err := filepath.Walk(dir.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -97,7 +96,6 @@ func listDir(dir Path, flags map[rune]bool) ([]FileInfo, error) {
 		if filepath.Base(filepath.Dir(path)) != filepath.Base(dir.Path) {
 			return filepath.SkipDir
 		}
-
 		files = append(files, FileInfo{FileInfo: info, Path: path, Name: info.Name()})
 
 		return nil

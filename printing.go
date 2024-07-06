@@ -13,6 +13,15 @@ func printFiles(dir Path, files []FileInfo, flags map[rune]bool) {
 	if flags['l'] {
 		printDirSize(files)
 	}
+	// symlink
+	absPath, _ := filepath.Abs(dir.Path)
+	fileinfo, _ := os.Lstat(absPath)
+	if fileinfo.Mode()&os.ModeSymlink != 0 { // Check if it's a symlink
+		if dir.Path[len(dir.Path)-1] != '/' {
+			nf := FileInfo{FileInfo: fileinfo, Path: absPath, Name: filepath.Base(absPath)}
+			files = append(files, nf)
+		}
+	}
 	for indx, file := range files {
 		if flags['l'] {
 			printLongFormat(dir, file)
@@ -62,13 +71,11 @@ func printRecursive(dir Path, flags map[rune]bool) {
 func printLongFormat(dir Path, file FileInfo) {
 	// check symlink file
 	absPath, _ := filepath.Abs(file.Path)
-	absPathStat, _ := os.Stat(absPath)
-	if !absPathStat.IsDir() {
-		fileinfo, _ := os.Lstat(absPath)
-		if fileinfo.Mode()&os.ModeSymlink != 0 { // Check if it's a symlink
-			linkSrc, _ := os.Readlink(absPath)
-			dir.LinkSrc = linkSrc
-		}
+	fileinfo, _ := os.Lstat(absPath)
+	linkSrc := ""
+	if fileinfo.Mode()&os.ModeSymlink != 0 { // Check if it's a symlink
+		linkSrc, _ = os.Readlink(absPath)
+		dir.LinkSrc = linkSrc
 	}
 
 	modTime := file.ModTime().Format(time.Stamp)
@@ -90,7 +97,7 @@ func printLongFormat(dir Path, file FileInfo) {
 		fmt.Printf("%s\n", cFolder)
 	} else {
 		if dir.LinkSrc != "" {
-			fmt.Printf("%s -> %s\n", file.Name, dir.LinkSrc)
+			fmt.Printf("%s -> %s\n", file.Name, linkSrc)
 		} else {
 			fmt.Printf("%s\n", file.Name)
 		}
@@ -103,7 +110,7 @@ func printDirSize(files []FileInfo) {
 
 	for _, file := range files {
 		var stat syscall.Stat_t
-		err := syscall.Stat(file.Path, &stat)
+		err := syscall.Lstat(file.Path, &stat)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error getting stats for %s: %v\n", file.Path, err)
 			return

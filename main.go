@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 )
 
 type FileInfo struct {
@@ -53,8 +54,9 @@ func main() {
 			// use recursive printing if -R flag is set
 			printRecursive(path, flags)
 		} else if path.Ptype == "File" {
+			log.Println(path.Path)
 			// print the file if it is a file
-			fileinfo, _ := os.Stat(path.Path)
+			fileinfo, _ := os.Lstat(path.Path)
 			files := []FileInfo{{FileInfo: fileinfo, Path: path.Path, Name: path.Name}}
 			if len(inpPaths) > 1 {
 				fmt.Printf("%s: \n", path.Name)
@@ -62,6 +64,15 @@ func main() {
 			printFiles(path, files, flags)
 			fmt.Print("\n")
 		} else {
+			// symlink
+			absPath, _ := filepath.Abs(path.Path)
+			fileinfo, _ := os.Lstat(absPath)
+			if fileinfo.Mode()&os.ModeSymlink != 0 { // Check if it's a symlink
+				if !flags['l'] {
+					path.Path = absPath + "/"
+				}
+			}
+
 			files, err := listDir(path, flags)
 			if err != nil {
 				fmt.Println("Error:", err)
