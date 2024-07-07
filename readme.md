@@ -17,7 +17,7 @@ To install **my-ls-1**, you need to have Go installed on your system. Then, you 
 1. Clone the repository:
 
    ```bash
-   git clone https://learn.reboot01.com/git/emarei/my-ls-1.git
+   git clone https://github.com/iemran93/my-ls-1.git
    ```
 
 2. Change to the project directory:

@@ -54,7 +54,6 @@ func main() {
 			// use recursive printing if -R flag is set
 			printRecursive(path, flags)
 		} else if path.Ptype == "File" {
-			log.Println(path.Path)
 			// print the file if it is a file
 			fileinfo, _ := os.Lstat(path.Path)
 			files := []FileInfo{{FileInfo: fileinfo, Path: path.Path, Name: path.Name}}
